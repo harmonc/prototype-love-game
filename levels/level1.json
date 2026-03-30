@@ -1,0 +1,15 @@
+{
+  "level": 1,
+  "name": "Push to Target",
+  "budget": 50,
+  "inventory": {
+    "circle": { "cost": 10, "limit": 5 },
+    "triangle": { "cost": 20, "limit": 3 },
+    "block": { "cost": 0, "limit": 1 },
+    "target": { "cost": 0, "limit": 1 }
+  },
+  "preplaced": {
+    "block": {"col": 2, "row": 3},
+    "target": {"col": 6, "row": 3}
+  }
+}

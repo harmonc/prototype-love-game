@@ -1,5 +1,6 @@
 require "grid"
 require "save"
+require "levels.levelLoader"
 
 function love.load()
     love.window.setMode(1280, 800, {msaa = 8})
@@ -13,30 +14,114 @@ function love.load()
 
     paused = false
     pauseMenuSelection = 1
-    pauseMenuOptions = {"Save", "Screenshot", "Resume", "Quit"}
+    pauseMenuOptions = {"Save", "Load", "Screenshot", "Resume", "Quit"}
     pendingScreenshot = false
     screenshotCallback = nil
 
+    currentLevel = 1
+    levelWon = false
+    
     inventory = {
-        { type = "circle", name = "Circle" },
-        { type = "triangle", name = "Triangle" },
-        {}, {}, {}, {}, {}, {}, {}, {}
+        { type = "circle", name = "Circle", cost = 10, limit = 5 },
+        { type = "triangle", name = "Triangle", cost = 20, limit = 3 },
+        { type = "block", name = "Block", cost = 0, limit = 1 },
+        { type = "target", name = "Target", cost = 0, limit = 1 },
+        {}, {}, {}, {}, {}, {}
+    }
+    inventoryUsage = {
+        circle = 0,
+        triangle = 0,
+        block = 0,
+        target = 0
     }
     selectedInventorySlot = 1
     inventoryBarHeight = 80
-    stepButton = { x = 1180, y = 10, width = 90, height = 40 }
+    stepButton = { x = 1080, y = 10, width = 90, height = 40 }
 
     leftMouseDown = false
     rightMouseDown = false
     lastPaintCol = nil
     lastPaintRow = nil
 
-    loadGame(grid)
+    loadLevel(currentLevel)
+end
+
+function loadLevel(levelNum)
+    local level = LevelLoader.loadLevel(levelNum)
+    if not level then
+        print("Failed to load level " .. levelNum)
+        return
+    end
+    
+    currentLevelNum = level.level
+    levelName = level.name
+    budget = level.budget
+    
+    for k, v in pairs(level.inventory) do
+        for i, item in ipairs(inventory) do
+            if item.type == k then
+                item.cost = v.cost
+                item.limit = v.limit
+            end
+        end
+    end
+    
+    local preplaced = LevelLoader.getPreplacedObjects(level)
+    grid.objects = preplaced
+    
+    inventoryUsage = {
+        circle = 0,
+        triangle = 0,
+        block = 0,
+        target = 0
+    }
+    
+    for key, obj in pairs(grid.objects) do
+        if obj.type == "block" then inventoryUsage.block = 1
+        elseif obj.type == "target" then inventoryUsage.target = 1
+        end
+    end
+    
+    levelWon = false
+    print("Loaded level: " .. levelName)
+    
+    loadLevelProgress(levelNum)
+end
+
+function saveLevelProgress(levelNum)
+    local saveData = {
+        objects = grid.objects,
+        offsetX = grid.offsetX,
+        offsetY = grid.offsetY,
+        scale = grid.scale
+    }
+    love.filesystem.write("level_" .. levelNum .. ".json", JSON.encode(saveData))
+    print("Level " .. levelNum .. " saved")
+end
+
+function loadLevelProgress(levelNum)
+    local filename = "level_" .. levelNum .. ".json"
+    local info = love.filesystem.getInfo(filename)
+    if info then
+        local data = love.filesystem.read(filename)
+        local saveData = JSON.decode(data)
+        if saveData then
+            grid.objects = saveData.objects or {}
+            grid.offsetX = saveData.offsetX or 0
+            grid.offsetY = saveData.offsetY or 0
+            grid.scale = saveData.scale or 1
+            print("Level " .. levelNum .. " progress loaded")
+        end
+    end
 end
 
 function gameStep()
+    if levelWon then return end
+    
     local newObjects = {}
-    local movedKeys = {}
+    local triangleMoved = {}
+    local blockMoved = nil
+    local blockOnTarget = false
     
     for key, obj in pairs(grid.objects) do
         if obj.type == "triangle" then
@@ -55,11 +140,40 @@ function gameStep()
             local newRow = row + (dy or 0)
             local newKey = newCol .. "," .. newRow
             
-            if not grid.objects[newKey] and not newObjects[newKey] then
+            local targetObj = grid.objects[newKey]
+            
+            if targetObj and targetObj.type == "block" then
+                local blockDx = dx or 0
+                local blockDy = dy or 0
+                local blockNewCol = newCol + blockDx
+                local blockNewRow = newRow + blockDy
+                local blockNewKey = blockNewCol .. "," .. blockNewRow
+                
+                local blockTarget = grid.objects[blockNewKey]
+                
+                if blockTarget and blockTarget.type == "target" then
+                    newObjects[newKey] = { type = "triangle", direction = obj.direction }
+                    triangleMoved[key] = true
+                    blockMoved = newKey
+                    blockOnTarget = true
+                    print("Triangle pushed block onto target!")
+                elseif not blockTarget and not newObjects[blockNewKey] then
+                    newObjects[blockNewKey] = { type = "block" }
+                    newObjects[newKey] = { type = "triangle", direction = obj.direction }
+                    triangleMoved[key] = true
+                    blockMoved = newKey
+                    print("Triangle pushed block from " .. newKey .. " to " .. blockNewKey)
+                else
+                    newObjects[key] = obj
+                end
+            elseif not targetObj and not newObjects[newKey] then
                 newObjects[newKey] = { type = "triangle", direction = obj.direction }
-                movedKeys[key] = true
-                print("Triangle moved from " .. key .. " to " .. newKey)
+                triangleMoved[key] = true
             else
+                newObjects[key] = obj
+            end
+        elseif obj.type == "block" then
+            if key ~= blockMoved then
                 newObjects[key] = obj
             end
         else
@@ -67,13 +181,30 @@ function gameStep()
         end
     end
     
+    grid.objects = newObjects
+    
+    if blockOnTarget then
+        levelWon = true
+        print("LEVEL COMPLETE! Press N for next level")
+    end
+end
+
+function checkWinCondition()
+    local blockPos = nil
+    local targetPos = nil
+    
     for key, obj in pairs(grid.objects) do
-        if not movedKeys[key] then
-            newObjects[key] = obj
+        if obj.type == "block" then
+            blockPos = key
+        elseif obj.type == "target" then
+            targetPos = key
         end
     end
     
-    grid.objects = newObjects
+    if blockPos and targetPos and blockPos == targetPos then
+        levelWon = true
+        print("LEVEL COMPLETE! Press N for next level")
+    end
 end
 
 function love.update(dt)
@@ -97,7 +228,7 @@ function love.draw()
     love.graphics.rectangle("fill", highlightX, highlightY, highlightSize, highlightSize)
     love.graphics.setColor(1, 1, 1, 1)
 
-    if not paused then
+    if not paused and not levelWon then
         local currentObj = inventory[selectedInventorySlot]
         if currentObj and currentObj.type then
             if currentObj.type == "circle" then
@@ -106,6 +237,14 @@ function love.draw()
                 preview:draw(highlightX, highlightY, highlightSize)
             elseif currentObj.type == "triangle" then
                 local preview = Triangle.new(triangleDirection)
+                preview.color = {preview.color[1], preview.color[2], preview.color[3], 0.5}
+                preview:draw(highlightX, highlightY, highlightSize)
+            elseif currentObj.type == "block" then
+                local preview = Block.new()
+                preview.color = {preview.color[1], preview.color[2], preview.color[3], 0.5}
+                preview:draw(highlightX, highlightY, highlightSize)
+            elseif currentObj.type == "target" then
+                local preview = Target.new()
                 preview.color = {preview.color[1], preview.color[2], preview.color[3], 0.5}
                 preview:draw(highlightX, highlightY, highlightSize)
             end
@@ -164,8 +303,31 @@ function love.draw()
                 local preview = Triangle.new(0)
                 preview.color = {preview.color[1], preview.color[2], preview.color[3], 0.8}
                 preview:draw(slotX, slotY, slotSize)
+            elseif item.type == "block" then
+                local preview = Block.new()
+                preview.color = {preview.color[1], preview.color[2], preview.color[3], 0.8}
+                preview:draw(slotX, slotY, slotSize)
+            elseif item.type == "target" then
+                local preview = Target.new()
+                preview.color = {preview.color[1], preview.color[2], preview.color[3], 0.8}
+                preview:draw(slotX, slotY, slotSize)
+            end
+            
+            if item.limit then
+                love.graphics.setColor(0.8, 0.8, 0.8, 1)
+                love.graphics.print(item.limit, slotX + slotSize - 12, slotY + slotSize - 12)
             end
         end
+    end
+    
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print("Budget: " .. budget, 10, 720)
+    if levelName then
+        love.graphics.print(levelName, 10, 740)
+    end
+    if levelWon then
+        love.graphics.setColor(0.2, 0.9, 0.3, 1)
+        love.graphics.print("LEVEL COMPLETE! Press N for next level", 10, 60)
     end
 
     if paused and not pendingScreenshot then
@@ -261,10 +423,30 @@ function love.mousepressed(x, y, button)
         lastPaintRow = row
         local currentObj = inventory[selectedInventorySlot]
         if currentObj and currentObj.type then
-            if currentObj.type == "circle" then
-                grid.objects[key] = { type = "circle" }
-            else
-                grid.objects[key] = { type = "triangle", direction = triangleDirection }
+            local canPlace = true
+            local objType = currentObj.type
+            
+            if currentObj.limit and currentObj.limit > 0 then
+                local currentCount = 0
+                for k, v in pairs(grid.objects) do
+                    if v.type == objType then currentCount = currentCount + 1 end
+                end
+                if currentCount >= currentObj.limit then
+                    canPlace = false
+                    print("Cannot place " .. objType .. " - limit reached")
+                end
+            end
+            
+            if canPlace then
+                if objType == "circle" then
+                    grid.objects[key] = { type = "circle" }
+                elseif objType == "triangle" then
+                    grid.objects[key] = { type = "triangle", direction = triangleDirection }
+                elseif objType == "block" then
+                    grid.objects[key] = { type = "block" }
+                elseif objType == "target" then
+                    grid.objects[key] = { type = "target" }
+                end
             end
         end
     elseif button == "r" or button == 2 then
@@ -303,10 +485,29 @@ function love.mousemoved(x, y, dx, dy)
         if leftMouseDown then
             local currentObj = inventory[selectedInventorySlot]
             if currentObj and currentObj.type then
-                if currentObj.type == "circle" then
-                    grid.objects[key] = { type = "circle" }
-                else
-                    grid.objects[key] = { type = "triangle", direction = triangleDirection }
+                local canPlace = true
+                local objType = currentObj.type
+                
+                if currentObj.limit and currentObj.limit > 0 then
+                    local currentCount = 0
+                    for k, v in pairs(grid.objects) do
+                        if v.type == objType then currentCount = currentCount + 1 end
+                    end
+                    if currentCount >= currentObj.limit then
+                        canPlace = false
+                    end
+                end
+                
+                if canPlace then
+                    if objType == "circle" then
+                        grid.objects[key] = { type = "circle" }
+                    elseif objType == "triangle" then
+                        grid.objects[key] = { type = "triangle", direction = triangleDirection }
+                    elseif objType == "block" then
+                        grid.objects[key] = { type = "block" }
+                    elseif objType == "target" then
+                        grid.objects[key] = { type = "target" }
+                    end
                 end
             end
             lastPaintCol = col
@@ -341,16 +542,19 @@ function love.keypressed(key)
             if pauseMenuSelection > #pauseMenuOptions then pauseMenuSelection = 1 end
         elseif key == "return" or key == "space" then
             if pauseMenuSelection == 1 then
-                saveGame(grid)
+                saveLevelProgress(currentLevel)
                 paused = false
             elseif pauseMenuSelection == 2 then
+                loadLevelProgress(currentLevel)
+                paused = false
+            elseif pauseMenuSelection == 3 then
                 pendingScreenshot = true
                 paused = false
                 return
-            elseif pauseMenuSelection == 3 then
-                paused = false
             elseif pauseMenuSelection == 4 then
-                saveGame(grid)
+                paused = false
+            elseif pauseMenuSelection == 5 then
+                saveLevelProgress(currentLevel)
                 love.event.quit()
             end
         end
@@ -379,5 +583,14 @@ function love.keypressed(key)
         print("Triangle direction: " .. dirNames[triangleDirection + 1])
     elseif key == "space" then
         gameStep()
+    elseif key == "n" and levelWon then
+        saveLevelProgress(currentLevel)
+        currentLevel = currentLevel + 1
+        loadLevel(currentLevel)
     end
+end
+
+function love.quit()
+    saveLevelProgress(currentLevel)
+    print("Level progress saved on quit")
 end

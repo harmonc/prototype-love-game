@@ -92,6 +92,25 @@ function Grid:draw(screenWidth, screenHeight, showGrid)
     love.graphics.setLineWidth(1 / self.scale)
     love.graphics.setColor(0.5, 0.5, 0.5, 1)
 
+    local function getLayer(objType)
+        if objType == "target" then return 0 end
+        return 1
+    end
+
+    local function drawObject(obj, x, y, cellSize)
+        if obj.type == "circle" then
+            Circle.new():draw(x, y, cellSize)
+        elseif obj.type == "triangle" then
+            Triangle.new(obj.direction):draw(x, y, cellSize)
+        elseif obj.type == "block" then
+            Block.new():draw(x, y, cellSize)
+        elseif obj.type == "target" then
+            Target.new():draw(x, y, cellSize)
+        end
+    end
+
+    local cellObjects = {}
+
     for col = startCol, endCol do
         for row = startRow, endRow do
             local x = col * self.cellSize
@@ -101,15 +120,22 @@ function Grid:draw(screenWidth, screenHeight, showGrid)
                 love.graphics.rectangle("line", x, y, self.cellSize, self.cellSize)
             end
 
+            local key = col .. "," .. row
             local obj = self:getObject(col, row)
-            if obj and obj.type == "circle" then
-                Circle.new():draw(x, y, self.cellSize)
-                love.graphics.setColor(0.5, 0.5, 0.5, 1)
-            elseif obj and obj.type == "triangle" then
-                Triangle.new(obj.direction):draw(x, y, self.cellSize)
-                love.graphics.setColor(0.5, 0.5, 0.5, 1)
+            if obj then
+                table.insert(cellObjects, {key = key, obj = obj, x = x, y = y})
             end
         end
+    end
+
+    table.sort(cellObjects, function(a, b)
+        local layerA = getLayer(a.obj.type)
+        local layerB = getLayer(b.obj.type)
+        return layerA < layerB
+    end)
+
+    for _, cell in ipairs(cellObjects) do
+        drawObject(cell.obj, cell.x, cell.y, self.cellSize)
     end
     
     love.graphics.setColor(1, 1, 1, 1)
