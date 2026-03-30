@@ -1,8 +1,4 @@
-Object = {}
-Object.__index = Object
-
-function Object:draw(x, y, cellSize)
-end
+require "objects.object"
 
 Circle = setmetatable({}, { __index = Object })
 Circle.__index = Circle

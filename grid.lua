@@ -1,4 +1,4 @@
-require "object"
+require "objects"
 
 Grid = {}
 Grid.__index = Grid
@@ -104,6 +104,9 @@ function Grid:draw(screenWidth, screenHeight, showGrid)
             local obj = self:getObject(col, row)
             if obj and obj.type == "circle" then
                 Circle.new():draw(x, y, self.cellSize)
+                love.graphics.setColor(0.5, 0.5, 0.5, 1)
+            elseif obj and obj.type == "triangle" then
+                Triangle.new(obj.direction):draw(x, y, self.cellSize)
                 love.graphics.setColor(0.5, 0.5, 0.5, 1)
             end
         end
