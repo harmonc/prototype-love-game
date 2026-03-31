@@ -108,6 +108,17 @@ function Grid:draw(screenWidth, screenHeight, showGrid)
             elseif obj and obj.type == "triangle" then
                 Triangle.new(obj.direction):draw(x, y, self.cellSize)
                 love.graphics.setColor(0.5, 0.5, 0.5, 1)
+                
+                local hp = obj.hp or 3
+                local maxHp = 3
+                local barWidth = self.cellSize * 0.8
+                local barHeight = 4
+                local barX = x + (self.cellSize - barWidth) / 2
+                local barY = y + 4
+                love.graphics.setColor(0.2, 0.2, 0.2, 1)
+                love.graphics.rectangle("fill", barX, barY, barWidth, barHeight)
+                love.graphics.setColor(0.2, 0.8, 0.3, 1)
+                love.graphics.rectangle("fill", barX, barY, barWidth * (hp / maxHp), barHeight)
             end
         end
     end

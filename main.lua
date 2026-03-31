@@ -52,6 +52,48 @@ function love.load()
     loadGame(grid)
 end
 
+function findNearestTargetDir(startCol, startRow, targetSet, occupied)
+    local maxDepth = 20
+    local queue = {{col = startCol, row = startRow, firstDir = nil, depth = 0}}
+    local visited = {}
+    local startKey = startCol .. "," .. startRow
+    visited[startKey] = true
+    
+    for iter = 1, 5000 do
+        if #queue == 0 then break end
+        local current = table.remove(queue, 1)
+        local currentKey = current.col .. "," .. current.row
+        
+        if targetSet[currentKey] then
+            return current.firstDir
+        end
+        
+        if current.depth >= maxDepth then
+        else
+            local neighbors = {
+                {col = current.col, row = current.row - 1, dir = 0},
+                {col = current.col, row = current.row + 1, dir = 1},
+                {col = current.col - 1, row = current.row, dir = 2},
+                {col = current.col + 1, row = current.row, dir = 3}
+            }
+            
+            for _, neighbor in ipairs(neighbors) do
+                local neighborKey = neighbor.col .. "," .. neighbor.row
+                if not visited[neighborKey] and not occupied[neighborKey] then
+                    visited[neighborKey] = true
+                    local firstDir = current.firstDir
+                    if firstDir == nil then
+                        firstDir = neighbor.dir
+                    end
+                    table.insert(queue, {col = neighbor.col, row = neighbor.row, firstDir = firstDir, depth = current.depth + 1})
+                end
+            end
+        end
+    end
+    
+    return nil
+end
+
 function gameStep()
     local newObjects = {}
     
@@ -62,10 +104,14 @@ function gameStep()
     end
     
     local triangles = {}
+    local obstacles = {}
+    
     for key, obj in pairs(grid.objects) do
         if obj.type == "triangle" then
             local col, row = key:match("([^,]+),(.+)")
             table.insert(triangles, {key = key, col = tonumber(col), row = tonumber(row), obj = obj})
+        elseif obj.type == "circle" then
+            obstacles[key] = true
         end
     end
     
@@ -79,33 +125,68 @@ function gameStep()
         local col = tri.col
         local row = tri.row
         local obj = tri.obj
+        obj.hp = obj.hp or 3
         
-        local dx, dy
-        if obj.direction == 0 then dy = -1
-        elseif obj.direction == 1 then dy = 1
-        elseif obj.direction == 2 then dx = -1
-        elseif obj.direction == 3 then dx = 1
+        local targetSet = {}
+        for tKey, tObj in pairs(grid.objects) do
+            if tObj.type == "triangle" and tKey ~= key then
+                targetSet[tKey] = true
+            end
         end
         
-        local newCol = col + (dx or 0)
-        local newRow = row + (dy or 0)
-        local newKey = newCol .. "," .. newRow
+        local function getMoveDir(dir)
+            if dir == 0 then return 0, -1
+            elseif dir == 1 then return 0, 1
+            elseif dir == 2 then return -1, 0
+            elseif dir == 3 then return 1, 0
+            end
+            return 0, 0
+        end
         
-        if not grid.objects[newKey] and not newObjects[newKey] then
-            newObjects[newKey] = { type = "triangle", direction = obj.direction }
-            print("Triangle moved from " .. key .. " to " .. newKey)
-        else
+        local targetDir = findNearestTargetDir(col, row, targetSet, obstacles)
+        local moved = false
+        
+        if targetDir then
+            local dcol, drow = getMoveDir(targetDir)
+            local testCol = col + dcol
+            local testRow = row + drow
+            local testKey = testCol .. "," .. testRow
+            
+            if not obstacles[testKey] and not newObjects[testKey] then
+                obj.direction = targetDir
+                newObjects[testKey] = { type = "triangle", direction = obj.direction, hp = obj.hp }
+                print("Triangle moved from " .. key .. " to " .. testKey .. " (toward enemy)")
+                moved = true
+            end
+        end
+        
+        if not moved then
+            local dirs = {0, 1, 2, 3}
+            for _, dir in ipairs(dirs) do
+                local dcol, drow = getMoveDir(dir)
+                local testCol = col + dcol
+                local testRow = row + drow
+                local testKey = testCol .. "," .. testRow
+                
+                if not obstacles[testKey] and not newObjects[testKey] then
+                    obj.direction = dir
+                    newObjects[testKey] = { type = "triangle", direction = obj.direction, hp = obj.hp }
+                    print("Triangle moved from " .. key .. " to " .. testKey)
+                    moved = true
+                    break
+                end
+            end
+        end
+        
+        if not moved then
+            local rotationCycle = {[0]=1, [1]=2, [2]=3, [3]=0}
+            obj.direction = rotationCycle[obj.direction]
             newObjects[key] = obj
+            print("Triangle at " .. key .. " rotated to direction " .. obj.direction)
         end
     end
     
     grid.objects = newObjects
-    
-    for key, obj in pairs(grid.objects) do
-        if obj.type == "triangle" then
-            obj.direction = math.random(0, 3)
-        end
-    end
 end
 
 function love.update(dt)
@@ -362,7 +443,7 @@ function love.mousepressed(x, y, button)
             if currentObj.type == "circle" then
                 grid.objects[key] = { type = "circle" }
             else
-                grid.objects[key] = { type = "triangle", direction = triangleDirection }
+                grid.objects[key] = { type = "triangle", direction = triangleDirection, hp = 3 }
             end
         end
     elseif button == "r" or button == 2 then
@@ -404,7 +485,7 @@ function love.mousemoved(x, y, dx, dy)
                 if currentObj.type == "circle" then
                     grid.objects[key] = { type = "circle" }
                 else
-                    grid.objects[key] = { type = "triangle", direction = triangleDirection }
+                    grid.objects[key] = { type = "triangle", direction = triangleDirection, hp = 3 }
                 end
             end
             lastPaintCol = col
