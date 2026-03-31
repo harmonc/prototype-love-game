@@ -114,4 +114,5 @@ function Grid:draw(screenWidth, screenHeight, showGrid)
     
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.pop()
+    love.graphics.setLineWidth(1)
 end

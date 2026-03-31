@@ -92,8 +92,18 @@ function JSON.decode(str)
     return parseValue()
 end
 
-function saveGame(grid)
+function saveGame(grid, clear)
     print("Save directory: " .. love.filesystem.getSaveDirectory())
+    if clear then
+        love.filesystem.remove("save.json")
+        print("Save cleared")
+        grid.objects = {}
+        grid.offsetX = 0
+        grid.offsetY = 0
+        grid.scale = 1
+        print("Game reloaded fresh")
+        return
+    end
     local saveData = {
         objects = grid.objects,
         offsetX = grid.offsetX,
