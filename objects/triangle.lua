@@ -12,24 +12,22 @@ end
 
 function Triangle:draw(x, y, cellSize)
     love.graphics.setColor(self.color[1], self.color[2], self.color[3], self.color[4])
+    
     local cx = x + cellSize / 2
     local cy = y + cellSize / 2
     local size = cellSize * 0.4
     
-    local angles = {
-        [0] = -math.pi / 2,
-        [1] = math.pi / 2,
-        [2] = math.pi,
-        [3] = 0
-    }
-    local baseAngle = angles[self.direction] or -math.pi / 2
+    local angle = self.direction
     
-    local points = {}
-    for i = 0, 2 do
-        local angle = baseAngle + (i * 2 * math.pi / 3)
-        points[i * 2 + 1] = cx + size * math.cos(angle)
-        points[i * 2 + 2] = cy + size * math.sin(angle)
-    end
+    love.graphics.push()
+    love.graphics.translate(cx, cy)
+    love.graphics.rotate(angle)
     
-    love.graphics.polygon("fill", points)
+    love.graphics.polygon("fill", {
+        size, 0,
+        size * math.cos(2 * math.pi / 3), size * math.sin(2 * math.pi / 3),
+        size * math.cos(4 * math.pi / 3), size * math.sin(4 * math.pi / 3)
+    })
+    
+    love.graphics.pop()
 end
